@@ -2,6 +2,8 @@
 
 **Speak your udhaar and expenses in Hindi, English, or a mix. Get a running khata.**
 
+**Live demo:** https://voice-khata-ten.vercel.app (press **Load demo data** to try it with sample customers)
+
 Built for the Sarvam AI Buildathon with four Sarvam models: **Saaras v4** (speech-to-text), **Sarvam 105B** (chat), **Bulbul v3** (text-to-speech) and **Document AI** (reading photos of paper ledgers).
 
 ## Problem
