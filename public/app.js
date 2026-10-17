@@ -158,7 +158,7 @@ function renderReview(entries, unclear) {
     name.setAttribute('aria-label', 'Customer name');
     amount.setAttribute('aria-label', 'Amount in rupees');
     note.setAttribute('aria-label', 'Details');
-    const row = el('div', { className: 'entry ' + e.type }, type, name, amount, x, note);
+    const row = el('div', { className: 'entry ' + e.type }, type, name, x, amount, note);
     box.append(row);
   });
   const u = $('unclear');

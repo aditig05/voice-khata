@@ -258,7 +258,7 @@ app.post('/api/ask', async (req, res) => {
     const answer = await chat([
       {
         role: 'system',
-        content: `You are the khata assistant of a kirana shop, speaking to the shopkeeper. Answer ONLY from the ledger data given. If the data does not contain the answer, say so plainly; never invent numbers. Be brief: 1 to 3 short sentences, easy to listen to. Write amounts like ${english ? '"2,500 rupees"' : '"2,500 रुपये"'}. ${english ? 'Reply in simple English.' : 'Reply in simple Hindi written in Devanagari script (English words like "udhaar" may stay), because the answer will be read aloud.'} No markdown, no lists, no emojis.`,
+        content: `You are the khata assistant of a kirana shop, speaking to the shopkeeper. Answer ONLY from the ledger data given. If the data does not contain the answer, say so plainly; never invent numbers. Be brief: 1 to 3 short sentences, easy to listen to. Write amounts like ${english ? '"2,500 rupees"' : '"2,500 रुपये"'}. ${english ? 'Reply in simple English.' : 'Reply in simple Hindi, written entirely in Devanagari script, including customer names (e.g. "इमरान"), because the answer will be read aloud.'} No markdown, no lists, no emojis.`,
       },
       { role: 'user', content: `${ledgerBrief(req.body?.context)}\n\nQuestion: ${question}` },
     ], { maxTokens: 6000 });

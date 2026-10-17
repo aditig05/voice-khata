@@ -85,7 +85,7 @@ small { font-weight: 500; }
 .mic.alt[aria-pressed="true"] { background: var(--owe); }
 @keyframes pulse { 50% { transform: scale(.75); opacity: .6; } }
 
-.mic-stage { display: grid; justify-items: center; gap: .35rem; padding: .6rem 0 .2rem; text-align: center; }
+.mic-stage { display: grid; justify-items: center; gap: .6rem; padding: .6rem 0 .2rem; text-align: center; }
 .mic.big {
   flex-direction: column; justify-content: center; gap: .3rem;
   width: 9.5rem; height: 9.5rem; border-radius: 50%; padding: .8rem; font-size: 1rem; line-height: 1.15;
@@ -97,7 +97,8 @@ small { font-weight: 500; }
 .mic.big[aria-pressed="true"] { box-shadow: 0 6px 0 #6b160f, 0 0 0 10px rgba(164,38,28,.18); }
 .mic-help { margin: .2rem 0 0; color: var(--ink-soft); font-size: .9rem; max-width: 22rem; }
 .mic-row { display: flex; align-items: center; gap: 1rem; margin-bottom: .8rem; }
-.timer { font-variant-numeric: tabular-nums; color: var(--ink-soft); min-height: 1.5em; }
+.timer { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.mic-stage .timer:empty { display: none; }
 
 .or { display: flex; align-items: center; gap: .6rem; color: var(--ink-soft); font-size: .85rem; margin: 1.1rem 0 .7rem; }
 .or::before, .or::after { content: ""; flex: 1; border-top: 1px dashed var(--rule); }
@@ -154,14 +155,14 @@ select { width: auto; min-width: 9rem; margin-bottom: .6rem; }
 .dot.kharcha { background: var(--ink-soft); }
 .unclear { color: var(--owe); margin: .4rem 0; }
 .entry {
-  display: grid; grid-template-columns: 8.5rem 1fr 6rem auto; gap: .4rem; margin-top: .6rem; align-items: center;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: .4rem; margin-top: .6rem; align-items: center;
   background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--rule); border-radius: var(--radius); padding: .5rem;
 }
 .entry.udhaar { border-left-color: var(--owe); }
 .entry.jama { border-left-color: var(--paid); }
 .entry.kharcha { border-left-color: var(--ink-soft); }
 .entry select { min-width: 0; width: 100%; margin: 0; }
-.entry .note { grid-column: 1 / -2; }
+.entry .note { grid-column: 2 / -1; }
 .entry .x { cursor: pointer; background: none; border: 0; font-size: 1.3rem; color: var(--ink-soft); padding: 0 .4rem; }
 
 /* ---------- ask ---------- */
@@ -235,9 +236,6 @@ dialog::backdrop { background: rgba(20,38,74,.45); }
 
 @media (max-width: 860px) {
   .page { grid-template-columns: minmax(0, 1fr); padding: .8rem; }
-  .entry { grid-template-columns: 1fr 1fr auto; }
-  .entry select { grid-column: 1 / -1; }
-  .entry .note { grid-column: 1 / -1; }
   .totals { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
   .totals dd { font-size: 1.1rem; }
   .steps li small { display: none; }

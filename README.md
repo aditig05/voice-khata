@@ -19,6 +19,18 @@ A kirana shopkeeper records udhaar (credit) in a paper bahi-khata while serving 
 - **Who may pay late?** marks each customer as low, medium or high risk from their payment history and suggests a respectful nudge.
 - **Scan a paper page** of an old bahi-khata to bring it into the app.
 
+## Screenshots
+
+![Voice Khata: add entries by voice and see who owes what, with AI risk ratings](docs/khata.png)
+
+| Check before saving | Ask your khata (spoken answer) |
+|---|---|
+| ![Review step with entries read from speech](docs/review.png) | ![Question answered in Hindi with audio](docs/ask.png) |
+
+| Reminder with voice note | On a phone |
+|---|---|
+| ![WhatsApp reminder in Hindi with a Bulbul voice note](docs/reminder.png) | <img src="docs/mobile.png" alt="Voice Khata on a phone" width="300"> |
+
 ## Sarvam AI models used
 
 | Model | Used for |
