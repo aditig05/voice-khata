@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Khata – speak your udhaar, get your ledger</title>
+  <meta name="description" content="Speak udhaar and expenses in Hindi, English or both. Voice Khata keeps the ledger, answers questions out loud and drafts polite reminders. Built with Sarvam AI.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%237d1a1a%22/%3E%3Ctext x=%2216%22 y=%2223%22 font-size=%2218%22 text-anchor=%22middle%22 fill=%22%23f6e9e0%22%3E%E2%82%B9%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="cover">
+    <div class="cover-inner">
+      <div>
+        <h1>खाता <span>Voice Khata</span></h1>
+        <p>Say it the way you would tell a helper. Hindi, English or both.</p>
+      </div>
+      <ol class="steps" aria-label="How it works">
+        <li data-step="1" class="active"><b>1</b> Bolo <small>Speak, type or scan</small></li>
+        <li data-step="2"><b>2</b> Check karo <small>Fix anything wrong</small></li>
+        <li data-step="3"><b>3</b> Khata ready <small>Balances update</small></li>
+      </ol>
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="col">
+      <section class="panel record" aria-labelledby="rec-h">
+        <h2 id="rec-h"><span class="num-badge">1</span> Add entries</h2>
+        <p class="hint">Nothing is saved until you check it.</p>
+
+        <div class="mic-stage">
+          <button id="mic" class="mic big" type="button" aria-pressed="false" aria-describedby="mic-help">
+            <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+            <span id="mic-label">Tap to speak</span>
+          </button>
+          <span id="timer" class="timer" aria-live="off"></span>
+          <p id="mic-help" class="mic-help">e.g. “Ramesh ne do sau ka udhaar liya, atta aur chini”</p>
+        </div>
+
+        <div class="or"><span>or type it</span></div>
+        <label for="transcript" class="field-label">What was said (you can edit it)</label>
+        <textarea id="transcript" rows="2" placeholder="Ramesh ne 200 ka udhaar liya, Sunita ne 150 wapas kiye"></textarea>
+        <div class="row">
+          <button id="read" type="button" class="btn">Read entries</button>
+        </div>
+        <div class="samples" aria-label="Example lines">
+          <span class="samples-label">Try an example:</span>
+          <button type="button" class="chip" data-text="Ramesh ne do sau ka udhaar liya, atta aur chini">Ramesh ne do sau ka udhaar liya</button>
+          <button type="button" class="chip" data-text="Sunita ne dedh sau rupaye wapas kiye">Sunita ne dedh sau wapas kiye</button>
+          <button type="button" class="chip" data-text="Bijli bill 800 and transport 300 today, Ramesh paid 100">Bijli bill 800, Ramesh paid 100</button>
+        </div>
+
+        <div class="or"><span>or bring your paper khata</span></div>
+        <label class="btn scan-btn" for="scan" id="scan-label">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9Zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
+          Scan a paper page
+        </label>
+        <input id="scan" type="file" accept="image/*,application/pdf" hidden>
+
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="review" class="panel review" aria-labelledby="review-h" hidden>
+        <h2 id="review-h"><span class="num-badge">2</span> Check before saving</h2>
+        <p class="hint legend">
+          <span class="dot udhaar"></span> Udhaar = took goods on credit
+          <span class="dot jama"></span> Jama = paid back
+          <span class="dot kharcha"></span> Kharcha = shop expense
+        </p>
+        <p id="unclear" class="unclear" hidden></p>
+        <div id="review-list"></div>
+        <div class="row">
+          <button id="save" type="button" class="btn primary">Save to khata</button>
+          <button id="discard" type="button" class="btn quiet">Discard</button>
+        </div>
+      </section>
+
+      <section class="panel ask" aria-labelledby="ask-h">
+        <h2 id="ask-h">Ask your khata <span class="pill">answers out loud</span></h2>
+        <p class="hint">Try “Ramesh ka kitna baaki hai?” or “is hafte kitna aaya?”</p>
+        <div class="mic-row">
+          <button id="ask-mic" class="mic alt" type="button" aria-pressed="false">
+            <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+            <span id="ask-mic-label">Ask by voice</span>
+          </button>
+          <span id="ask-timer" class="timer" aria-live="off"></span>
+        </div>
+        <form id="ask-form" class="ask-form">
+          <label for="question" class="sr">Your question</label>
+          <input id="question" type="text" placeholder="or type a question" autocomplete="off">
+          <button class="btn" type="submit" id="ask-go">Ask</button>
+        </form>
+        <p id="ask-status" class="status" role="status" aria-live="polite"></p>
+        <div id="answer-box" class="answer-box" hidden>
+          <p id="answer" class="answer"></p>
+          <audio id="answer-audio" controls></audio>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel book" aria-labelledby="book-h">
+      <div class="book-head">
+        <h2 id="book-h">Your khata</h2>
+        <div class="tools">
+          <button id="demo" type="button" class="btn quiet">Load demo data</button>
+          <button id="export" type="button" class="btn quiet">Download CSV</button>
+          <button id="clear" type="button" class="btn quiet">Clear all</button>
+        </div>
+      </div>
+
+      <dl class="totals">
+        <div><dt>Lena hai <small>to receive</small></dt><dd id="t-owed">₹0</dd></div>
+        <div><dt>Aaj aaya <small>received today</small></dt><dd id="t-today">₹0</dd></div>
+        <div><dt>Kharcha <small>shop expenses</small></dt><dd id="t-exp">₹0</dd></div>
+      </dl>
+
+      <div id="empty" class="onboard">
+        <h3>Your khata is empty</h3>
+        <p>Tap <b>Tap to speak</b> and say your first entry, or load sample customers to see everything working.</p>
+        <button id="demo-empty" type="button" class="btn primary">Load demo data</button>
+      </div>
+
+      <div id="book-body">
+        <div class="table-head">
+          <div>
+            <h3>Who owes you</h3>
+            <p class="hint tight">Tap a name to see only their entries.</p>
+          </div>
+          <button id="insights-btn" type="button" class="btn">Who may pay late? <span class="pill">AI</span></button>
+        </div>
+        <p id="insights-status" class="status" role="status" aria-live="polite"></p>
+        <ul id="people" class="people"></ul>
+
+        <div class="table-head">
+          <h3>All entries <span id="filter-note"></span></h3>
+          <button id="unfilter" type="button" class="btn quiet" hidden>Show everyone</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Name</th><th>Details</th><th class="num">Amount</th><th><span class="sr">Remove</span></th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">Built with Sarvam AI: Saaras (speech), Sarvam 105B (understanding), Bulbul (voice), Document AI (scan). Your khata stays in this browser.</footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-undo" type="button" hidden>Undo</button>
+  </div>
+
+  <dialog id="remind">
+    <form method="dialog" class="remind-box">
+      <h3 id="remind-title">Payment reminder</h3>
+      <label for="remind-lang" class="field-label">Language</label>
+      <select id="remind-lang">
+        <option value="hindi">Hindi</option>
+        <option value="hinglish">Hinglish</option>
+        <option value="english">English</option>
+      </select>
+      <textarea id="remind-text" rows="5" placeholder="Writing the message…"></textarea>
+      <p id="remind-status" class="status" role="status" aria-live="polite"></p>
+      <div id="voice-box" hidden>
+        <audio id="remind-audio" controls></audio>
+        <a id="remind-dl" class="btn quiet" download="reminder.mp3">Download voice note</a>
+        <p class="hint tight">Download it and attach it in WhatsApp as a voice message.</p>
+      </div>
+      <div class="row">
+        <a id="remind-wa" class="btn primary" target="_blank" rel="noopener">Send on WhatsApp</a>
+        <button type="button" id="remind-voice" class="btn">Make voice note</button>
+        <button type="button" id="remind-copy" class="btn quiet">Copy</button>
+        <button type="button" id="remind-gen" class="btn quiet">Write again</button>
+        <button class="btn quiet" value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
