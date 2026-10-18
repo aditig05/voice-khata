@@ -46,11 +46,14 @@ A **khata** (bahi-khata) is the notebook a shopkeeper keeps to track money: who 
 | Bulbul v3 | Speaking answers and reminder voice notes in 11 languages |
 | Document AI | Reading photos of paper ledger pages |
 
+**When Sarvam credits run out:** every AI call falls back automatically to free providers: Groq (gpt-oss-120b for understanding, Whisper for speech-to-text) and Google Gemini (Flash as a second chat model, and for reading ledger photos, Flash TTS for voice). If no voice comes back, the phone reads the reply aloud itself. Set `AI_PROVIDER=free` to skip Sarvam entirely.
+
+
 ## Run locally
 
 ```bash
 npm install
-cp .env.example .env      # add your SARVAM_API_KEY
+cp .env.example .env      # add SARVAM_API_KEY (and optionally GROQ_API_KEY, GEMINI_API_KEY)
 npm start
 ```
 

@@ -3,15 +3,14 @@ import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ApiError, chat, transcribe, speak, readImageWithGemini, providerKeys } from './ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } }); // Vercel caps request bodies at 4.5 MB
 
 // SARVAM_BASE_URL is only overridden in local tests (mock server). Default is the real API.
-const BASE = process.env.SARVAM_BASE_URL || 'https://api.sarvam.ai';
-const CHAT_MODEL = 'sarvam-105b';
-const STT_MODEL = 'saaras:v4';
+const BASE = process.env.SARVAM_BASE_URL || 'https://api.sarvam.ai'; // used directly only by the Document AI scan
 const VOICE_MODEL = 'sarvam-105b-conversations'; // Sarvam's model for real-time voice agents
 const TYPES = new Set(['udhaar', 'jama', 'kharcha']);
 
@@ -50,10 +49,6 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-class ApiError extends Error {
-  constructor(message, status = 502) { super(message); this.status = status; }
-}
-
 function requireKey() {
   if (!process.env.SARVAM_API_KEY) {
     throw new ApiError('Server is missing SARVAM_API_KEY. Add it to .env and restart.', 500);
@@ -79,25 +74,8 @@ async function sarvamError(r) {
   return new ApiError(msg, 502);
 }
 
-// sarvam-105b thinks before answering by default: 5-15 s, and the hidden thinking counts against
-// max_tokens (a small cap leaves `content` null). Quick extraction/reply tasks turn it off
-// (reasoning: false); only the risk analysis keeps it, with a generous budget.
-async function chat(messages, { maxTokens = 8000, model = CHAT_MODEL, reasoning = true } = {}) {
-  const key = requireKey();
-  const r = await callSarvam(`${BASE}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'api-subscription-key': key },
-    body: JSON.stringify({
-      model, messages, temperature: 0.1, max_tokens: maxTokens,
-      ...(reasoning ? {} : { reasoning_effort: null }), // null turns thinking off: ~0.5 s instead of 5-15 s
-    }),
-  });
-  if (!r.ok) throw await sarvamError(r);
-  const data = await r.json();
-  let text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) throw new ApiError('The model returned an empty answer. Please try again.');
-  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-}
+// Chat, speech-to-text and text-to-speech go through ai.js: Sarvam first, then free providers
+// (Groq, Gemini) if Sarvam fails or AI_PROVIDER=free.
 
 function extractJson(text) {
   const cleaned = text.replace(/```json|```/g, '');
@@ -128,28 +106,10 @@ function normalizeEntries(raw) {
 }
 
 // 1) Speech -> text (Sarvam Saaras)
-async function transcribeAudio(file, names) {
-  const key = requireKey();
-  const mime = (file.mimetype || 'audio/webm').split(';')[0];
-  const form = new FormData();
-  form.append('file', new Blob([file.buffer], { type: mime }), file.originalname || 'speech.webm');
-  form.append('model', STT_MODEL);
-  form.append('language_code', 'unknown'); // auto-detect any of 22 Indian languages, English, or a mix
-  if (names.length) form.append('keyterms', JSON.stringify(names)); // bias toward known customer names
-
-  const r = await callSarvam(`${BASE}/speech-to-text`, { method: 'POST', headers: { 'api-subscription-key': key }, body: form });
-  if (!r.ok) throw await sarvamError(r);
-  const data = await r.json();
-  const transcript = (data?.transcript || '').trim();
-  if (!transcript) throw new ApiError('Could not hear any speech. Try again closer to the mic.', 422);
-  return { transcript, language_code: data.language_code ?? null };
-}
-
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   try {
-    requireKey();
     if (!req.file || !req.file.size) throw new ApiError('No audio received. Tap the mic, speak, then tap again.', 400);
-    res.json(await transcribeAudio(req.file, cleanNames(req.body?.names)));
+    res.json(await transcribe(req.file, cleanNames(req.body?.names)));
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Transcription failed.' });
   }
@@ -164,7 +124,7 @@ Entry types:
 
 Rules:
 - Write customer names in Latin letters (English spelling), e.g. "Ramesh", "Sunita Devi". If a name matches or sounds like one in the known customer list, use exactly that spelling.
-- amount is a positive number in rupees. Convert spoken numbers in any language ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250, "இருநூறு" = 200).
+- amount is a positive number in rupees. Speech recognition may run number words together ("दोसों" = दो सौ = 200). Convert spoken numbers in any language ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250, "இருநூறு" = 200).
 - note is a few words about what it was for (e.g. "atta, chini"); use "" if none. Keep the note in the language it was spoken in.
 - For "kharcha", customer must be "".
 - If the text has no money entry, or something is too unclear to record, return an empty entries list and explain briefly in "unclear".
@@ -225,28 +185,7 @@ app.post('/api/reminder', async (req, res) => {
   }
 });
 
-// ---------- Text -> speech (Sarvam Bulbul) ----------
-const TTS_MODEL = 'bulbul:v3';
-const TTS_SPEAKER = process.env.TTS_SPEAKER || 'priya';
-
-async function speak(text, languageCode = 'hi-IN') {
-  const key = requireKey();
-  const r = await callSarvam(`${BASE}/text-to-speech`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'api-subscription-key': key },
-    body: JSON.stringify({
-      text: text.slice(0, 2500), language_code: languageCode, model: TTS_MODEL, speaker: TTS_SPEAKER,
-      output_audio_codec: 'mp3',
-    }),
-  });
-  if (!r.ok) throw await sarvamError(r);
-  const data = await r.json();
-  const audio = data?.audios?.[0];
-  if (!audio) throw new ApiError('Sarvam returned no audio. Please try again.');
-  return audio; // base64 mp3
-}
-
-
+// ---------- Text -> speech (Bulbul, or Gemini TTS) ----------
 app.post('/api/speak', async (req, res) => {
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
@@ -313,6 +252,7 @@ Actions:
 - "unclear": anything else, or you did not understand. "reply": ask them to say it again, with a short example.
 
 Entry types: "udhaar" = customer took goods on credit and owes money; "jama" = customer paid money back; "kharcha" = shop expense with customer "".
+Speech recognition may run number words together ("दोसों"/"दोसो" = दो सौ = 200, "ढाईसौ" = 250); read them as numbers.
 Entry rules: customer names in Latin letters, using the exact spelling from the known customers if it matches or sounds alike. amount is a positive number in rupees; convert spoken numbers in any language ("dedh sau" = 150). note is a few words about what it was for, or "".
 For actions other than "add", "entries" must be [].
 
@@ -321,7 +261,6 @@ Reply rules: 1 or 2 short sentences, easy to listen to. Reply in ${code === 'en-
 
 app.post('/api/talk', upload.single('audio'), async (req, res) => {
   try {
-    requireKey();
     if (!req.file?.size) throw new ApiError('No audio received.', 400);
     let state = {};
     try { state = JSON.parse(req.body?.state || '{}'); } catch { /* use defaults */ }
@@ -332,7 +271,7 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
       .map((m) => `${m.role === 'user' ? 'Shopkeeper' : 'You'}: ${m.content.slice(0, 300)}`);
     const known = cleanNames((state.context?.people || []).map((p) => p?.name));
 
-    const { transcript } = await transcribeAudio(req.file, known);
+    const { transcript } = await transcribe(req.file, known);
 
     const answer = await chat([
       { role: 'system', content: talkSystem(code) },
@@ -388,7 +327,7 @@ app.post('/api/insights', async (req, res) => {
         content: `You advise a kirana shopkeeper on credit risk using each customer's payment history. For every customer decide risk: "low" (pays regularly or balance is small and recent), "medium", or "high" (large or old balance, rarely or never pays back). Give "why" in at most 14 words citing the actual numbers, and "nudge": one practical, respectful suggestion (when/how to remind, or whether to limit further credit). Reply with ONLY JSON: {"insights":[{"customer":"","risk":"low|medium|high","why":"","nudge":""}]}`,
       },
       { role: 'user', content: JSON.stringify(stats) },
-    ], { maxTokens: 8000 });
+    ], { reasoning: true, maxTokens: 8000 }); // a one-tap analysis: worth Sarvam's slower, careful mode
 
     let parsed;
     try { parsed = extractJson(answer); }
@@ -429,43 +368,60 @@ const SCAN_SCHEMA = {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const SCAN_PROMPT = `This is a photo of a page from an Indian shop's ledger (bahi-khata). Read every ledger line, top to bottom. Reply with ONLY JSON: {"entries":[{"customer":"","type":"udhaar|jama|kharcha","amount":0,"note":""}]}. udhaar = goods given on credit (customer owes), jama = customer paid money back, kharcha = shop expense (customer ""). Customer names in Latin letters. amount is a number in rupees. note is items or remarks, or "".`;
+
 app.post('/api/scan', upload.single('image'), async (req, res) => {
   try {
-    const key = requireKey();
     if (!req.file?.size) throw new ApiError('No photo received.', 400);
     const mime = req.file.mimetype || '';
     if (!/^(image\/(png|jpe?g)|application\/pdf)$/.test(mime)) throw new ApiError('Please upload a JPG or PNG photo (or a PDF).', 400);
-    const headers = { 'api-subscription-key': key };
-
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer], { type: mime }), req.file.originalname || 'page.jpg');
-    form.append('language', 'hi-IN');
-    form.append('output_format', 'json');
-    form.append('schema', JSON.stringify(SCAN_SCHEMA));
-    let r = await callSarvam(`${BASE}/doc-ai/v1/job/extract`, { method: 'POST', headers, body: form });
-    if (!r.ok) throw await sarvamError(r);
-    const jobId = (await r.json())?.job_id;
-    if (!jobId) throw new ApiError('Sarvam did not start the scan. Please try again.');
-
-    let status = 'pending';
-    for (let i = 0; i < 60 && ['pending', 'running'].includes(status); i++) {
-      await sleep(2000);
-      r = await callSarvam(`${BASE}/doc-ai/v1/job/${jobId}/status`, { headers });
-      if (!r.ok) throw await sarvamError(r);
-      status = (await r.json())?.status;
+    let entries;
+    const useSarvam = process.env.SARVAM_API_KEY && (process.env.AI_PROVIDER || 'auto') !== 'free';
+    try {
+      if (!useSarvam) throw new ApiError('Sarvam skipped.');
+      entries = await scanWithSarvam(req.file, mime);
+    } catch (e) {
+      if (!process.env.GEMINI_API_KEY) throw e;
+      if (useSarvam) console.warn(`[ai] sarvam scan failed: ${e.message}`);
+      let parsed;
+      try { parsed = extractJson(await readImageWithGemini(req.file.buffer, mime, SCAN_PROMPT)); }
+      catch (err) { if (err instanceof ApiError) throw err; throw new ApiError('Could not read this page. Try a clearer, well-lit photo.', 422); }
+      entries = normalizeEntries(parsed.entries);
     }
-    if (['pending', 'running'].includes(status)) throw new ApiError('Scanning is taking too long. Try a smaller or clearer photo.', 504);
-    if (!['completed', 'partially_completed'].includes(status)) throw new ApiError('Sarvam could not read this page. Try a clearer, well-lit photo.', 422);
-
-    r = await callSarvam(`${BASE}/doc-ai/v1/job/${jobId}/results`, { headers });
-    if (!r.ok) throw await sarvamError(r);
-    const result = (await r.json())?.result;
-    const entries = normalizeEntries(result?.entries ?? result);
     res.json({ entries, unclear: entries.length ? '' : 'No ledger lines were found on that page.' });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Could not scan the page.' });
   }
 });
+
+async function scanWithSarvam(file, mime) {
+  const headers = { 'api-subscription-key': requireKey() };
+
+  const form = new FormData();
+  form.append('file', new Blob([file.buffer], { type: mime }), file.originalname || 'page.jpg');
+  form.append('language', 'hi-IN');
+  form.append('output_format', 'json');
+  form.append('schema', JSON.stringify(SCAN_SCHEMA));
+  let r = await callSarvam(`${BASE}/doc-ai/v1/job/extract`, { method: 'POST', headers, body: form });
+  if (!r.ok) throw await sarvamError(r);
+  const jobId = (await r.json())?.job_id;
+  if (!jobId) throw new ApiError('Sarvam did not start the scan. Please try again.');
+
+  let status = 'pending';
+  for (let i = 0; i < 60 && ['pending', 'running'].includes(status); i++) {
+    await sleep(2000);
+    r = await callSarvam(`${BASE}/doc-ai/v1/job/${jobId}/status`, { headers });
+    if (!r.ok) throw await sarvamError(r);
+    status = (await r.json())?.status;
+  }
+  if (['pending', 'running'].includes(status)) throw new ApiError('Scanning is taking too long. Try a smaller or clearer photo.', 504);
+  if (!['completed', 'partially_completed'].includes(status)) throw new ApiError('Sarvam could not read this page. Try a clearer, well-lit photo.', 422);
+
+  r = await callSarvam(`${BASE}/doc-ai/v1/job/${jobId}/results`, { headers });
+  if (!r.ok) throw await sarvamError(r);
+  const result = (await r.json())?.result;
+  return normalizeEntries(result?.entries ?? result);
+}
 
 app.use((err, _req, res, _next) => {
   if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File is too large. Keep recordings under 30 seconds and photos under 4 MB.' });

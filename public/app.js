@@ -337,6 +337,16 @@ $('scan').onchange = async (ev) => {
   }
 };
 
+// When no voice comes back from the server (every voice service failed), the phone reads the text itself.
+function browserSpeak(text, lang, onEnd) {
+  if (!text || !window.speechSynthesis) { onEnd?.(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === 'hinglish' ? 'hi-IN' : lang;
+  u.onend = u.onerror = () => onEnd?.();
+  speechSynthesis.speak(u);
+}
+
 // ---------- talking khata ----------
 const askStatus = (msg, isError = false) => { $('ask-status').textContent = msg; $('ask-status').classList.toggle('error', isError); };
 
@@ -368,9 +378,9 @@ async function askKhata(question) {
     const audio = $('answer-audio');
     audio.hidden = !data.audio;
     if (data.audio) {
-      audio.src = 'data:audio/mpeg;base64,' + data.audio;
+      audio.src = data.audio;
       audio.play().catch(() => { /* autoplay blocked: the player is visible */ });
-    }
+    } else browserSpeak(data.answer, $('lang').value);
     askStatus('');
   } catch (e) {
     askStatus(e.message, true);
@@ -500,9 +510,10 @@ $('remind-voice').onclick = async () => {
   busy($('remind-voice'), true);
   try {
     const data = await api('/api/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, language_code: $('remind-lang').value === 'hinglish' ? 'hi-IN' : $('remind-lang').value }) });
-    const src = 'data:audio/mpeg;base64,' + data.audio;
+    const src = data.audio; // a data: URI (mp3 from Sarvam, wav from the free fallback)
     $('remind-audio').src = src;
     $('remind-dl').href = src;
+    $('remind-dl').download = src.startsWith('data:audio/wav') ? 'reminder.wav' : 'reminder.mp3';
     $('voice-box').hidden = false;
     $('remind-audio').play().catch(() => {});
     st.textContent = '';
@@ -572,6 +583,7 @@ function stopTalk(note) {
   clearInterval(talk.timer);
   if (talk.recorder && talk.recorder.state !== 'inactive') { talk.recorder.onstop = null; talk.recorder.stop(); }
   talk.audio?.pause();
+  window.speechSynthesis?.cancel();
   talk.stream?.getTracks().forEach((t) => t.stop());
   talk.ctx?.close().catch(() => {});
   talk.stream = talk.ctx = talk.recorder = talk.audio = null;
@@ -646,9 +658,9 @@ async function sendTurn(blob) {
   talkBubble('agent', data.reply);
   talk.history.push({ role: 'assistant', content: data.reply });
   const next = () => (data.action === 'stop' ? stopTalk() : listen());
-  if (!data.audio) { next(); return; }
   talkState('speaking');
-  talk.audio = new Audio('data:audio/mpeg;base64,' + data.audio);
+  if (!data.audio) { browserSpeak(data.reply, $('lang').value, () => { if (talk.on) next(); }); return; }
+  talk.audio = new Audio(data.audio);
   talk.audio.onended = () => { if (talk.on) next(); };
   talk.audio.play().catch(() => { if (talk.on) next(); });
 }
