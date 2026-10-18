@@ -14,20 +14,10 @@ const BASE = process.env.SARVAM_BASE_URL || 'https://api.sarvam.ai'; // used dir
 const VOICE_MODEL = 'sarvam-105b-conversations'; // Sarvam's model for real-time voice agents
 const TYPES = new Set(['udhaar', 'jama', 'kharcha']);
 
-// Languages Bulbul can speak. Saaras understands more (22 Indian languages + English) and
-// auto-detects them, so any of those works for input; this list is for spoken/written replies.
+// The app works in Hindi and English only.
 const LANGUAGES = {
   'hi-IN': { name: 'Hindi', script: 'Devanagari' },
   'en-IN': { name: 'English', script: 'Latin' },
-  'bn-IN': { name: 'Bengali', script: 'Bengali' },
-  'ta-IN': { name: 'Tamil', script: 'Tamil' },
-  'te-IN': { name: 'Telugu', script: 'Telugu' },
-  'kn-IN': { name: 'Kannada', script: 'Kannada' },
-  'ml-IN': { name: 'Malayalam', script: 'Malayalam' },
-  'mr-IN': { name: 'Marathi', script: 'Devanagari' },
-  'gu-IN': { name: 'Gujarati', script: 'Gujarati' },
-  'pa-IN': { name: 'Punjabi', script: 'Gurmukhi' },
-  'od-IN': { name: 'Odia', script: 'Odia' },
 };
 const langCode = (l) => (LANGUAGES[l] ? l : 'hi-IN');
 
@@ -115,7 +105,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
-const PARSE_SYSTEM = `You are the bookkeeping assistant of an Indian kirana (neighbourhood) shop. The shopkeeper may speak any Indian language (Hindi, Tamil, Bengali, Marathi, Telugu, ...), English, or a mix, and the text may contain speech-recognition mistakes. Extract every money entry.
+const PARSE_SYSTEM = `You are the bookkeeping assistant of an Indian kirana (neighbourhood) shop. The shopkeeper speaks Hindi, English, or a mix (Hinglish), and the text may contain speech-recognition mistakes. Extract every money entry.
 
 Entry types:
 - "udhaar": a customer took goods on credit and still owes the shop (e.g. "Ramesh ne 200 ka udhaar liya", "Ramesh ko 200 ka saman diya udhaar").
@@ -124,7 +114,7 @@ Entry types:
 
 Rules:
 - Write customer names in Latin letters (English spelling), e.g. "Ramesh", "Sunita Devi". If a name matches or sounds like one in the known customer list, use exactly that spelling.
-- amount is a positive number in rupees. Speech recognition may run number words together ("दोसों" = दो सौ = 200). Convert spoken numbers in any language ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250, "இருநூறு" = 200).
+- amount is a positive number in rupees. Speech recognition may run number words together ("दोसों" = दो सौ = 200). Convert spoken numbers in any language ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250).
 - note is a few words about what it was for (e.g. "atta, chini"); use "" if none. Keep the note in the language it was spoken in.
 - For "kharcha", customer must be "".
 - If the text has no money entry, or something is too unclear to record, return an empty entries list and explain briefly in "unclear".
@@ -240,7 +230,7 @@ const TALK_ACTIONS = new Set(['add', 'confirm', 'cancel', 'answer', 'stop', 'unc
 
 const talkSystem = (code) => {
   const { name, script } = LANGUAGES[code];
-  return `You are the hands-free voice assistant for a kirana shop's khata (ledger). The shopkeeper talks to you in any Indian language or English, often mixed; the text comes from speech recognition and may have small mistakes. Decide what they want and reply with ONLY a JSON object:
+  return `You are the hands-free voice assistant for a kirana shop's khata (ledger). The shopkeeper talks to you in Hindi or English, often mixed; the text comes from speech recognition and may have small mistakes. Decide what they want and reply with ONLY a JSON object:
 {"action":"add|confirm|cancel|answer|stop|unclear","entries":[{"customer":"","type":"udhaar|jama|kharcha","amount":0,"note":""}],"reply":""}
 
 Actions:

@@ -1,6 +1,6 @@
 # Voice Khata (खाता)
 
-**Speak your udhaar and expenses in Hindi, English or any Indian language. Get a running khata.**
+**Speak your udhaar and expenses in Hindi, English or a mix. Get a running khata.**
 
 **Live demo:** https://voice-khata-sarvam.vercel.app (press **Load demo data** to try it with sample customers)
 
@@ -22,7 +22,7 @@ A **khata** (bahi-khata) is the notebook a shopkeeper keeps to track money: who 
 - **Send reminders** as a polite WhatsApp message or a voice note, in Hindi, Hinglish or English.
 - **Who may pay late?** marks each customer as low, medium or high risk from their payment history and suggests a respectful nudge.
 - **Scan a paper page** of an old bahi-khata to bring it into the app.
-- **Many languages:** speak in any of 22 Indian languages or English, even mixed. Spoken answers and reminders come back in your choice of Hindi, English, Bengali, Marathi, Tamil, Telugu, Kannada, Malayalam, Gujarati, Punjabi or Odia.
+- **Hindi and English:** speak either, or mix them. Spoken answers and reminders come back in Hindi or English (reminders also in Hinglish).
 
 ## Screenshots
 
@@ -40,10 +40,10 @@ A **khata** (bahi-khata) is the notebook a shopkeeper keeps to track money: who 
 
 | Model | Used for |
 |---|---|
-| Saaras v4 | Speech to text in 22 Indian languages + English, biased toward known customer names |
+| Saaras v4 | Speech to text in Hindi, English and Hinglish, biased toward known customer names |
 | Sarvam 105B | Understanding entries, answering questions, reminders, risk insights |
 | Sarvam 105B Conversations | The hands-free voice agent: decides whether you're adding, correcting, confirming or asking, and writes the spoken reply |
-| Bulbul v3 | Speaking answers and reminder voice notes in 11 languages |
+| Bulbul v3 | Speaking answers and reminder voice notes |
 | Document AI | Reading photos of paper ledger pages |
 
 **When Sarvam credits run out:** every AI call falls back automatically to free providers: Groq (gpt-oss-120b for understanding, Whisper for speech-to-text) and Google Gemini (Flash as a second chat model, and for reading ledger photos, Flash TTS for voice). If no voice comes back, the phone reads the reply aloud itself. Set `AI_PROVIDER=free` to skip Sarvam entirely.

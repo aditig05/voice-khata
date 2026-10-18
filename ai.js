@@ -102,7 +102,7 @@ export function chat(messages, { maxTokens = 1500, reasoning = false, model = 's
 }
 
 // ---------- speech to text ----------
-const WHISPER_LANGS = { hindi: 'hi-IN', english: 'en-IN', bengali: 'bn-IN', tamil: 'ta-IN', telugu: 'te-IN', kannada: 'kn-IN', malayalam: 'ml-IN', marathi: 'mr-IN', gujarati: 'gu-IN', punjabi: 'pa-IN', odia: 'od-IN', urdu: 'ur-IN' };
+const WHISPER_LANGS = { hindi: 'hi-IN', english: 'en-IN' }; // the apps work in Hindi and English only
 
 export function transcribe(file, names = []) {
   const mime = (file.mimetype || 'audio/webm').split(';')[0];
@@ -117,7 +117,7 @@ export function transcribe(file, names = []) {
       const form = new FormData();
       form.append('file', blob(), file.originalname || 'speech.webm');
       form.append('model', 'saaras:v4');
-      form.append('language_code', 'unknown'); // auto-detect any of 22 Indian languages, English, or a mix
+      form.append('language_code', 'unknown'); // auto-detect Hindi, English or a mix
       if (names.length) form.append('keyterms', JSON.stringify(names)); // bias toward known names
       const r = await call(`${SARVAM}/speech-to-text`, { method: 'POST', headers: { 'api-subscription-key': keys.sarvam() }, body: form }, 'Sarvam');
       const d = await r.json();
@@ -136,8 +136,9 @@ export function transcribe(file, names = []) {
         return r.json();
       };
       let d = await whisper();
-      // spoken Hindi and Urdu sound the same; Whisper often writes Hindi in Urdu script, so redo it as Hindi
-      if (String(d?.language).toLowerCase() === 'urdu') d = { ...(await whisper('hi')), language: 'hindi' };
+      // only Hindi and English are expected; anything else (often Urdu: spoken Hindi and Urdu sound the
+      // same, and Whisper then writes Hindi in Urdu script) is redone as Hindi
+      if (!['hindi', 'english'].includes(String(d?.language).toLowerCase())) d = { ...(await whisper('hi')), language: 'hindi' };
       return done(d?.text, WHISPER_LANGS[String(d?.language || '').toLowerCase()]);
     },
   });

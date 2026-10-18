@@ -341,11 +341,26 @@ $('scan').onchange = async (ev) => {
 function browserSpeak(text, lang, onEnd) {
   if (!text || !window.speechSynthesis) { onEnd?.(); return; }
   speechSynthesis.cancel();
+  const pick = phoneVoice(text, lang === 'hinglish' ? 'hi-IN' : lang);
+  if (!pick) { toast('This phone has no Hindi voice. Pick English at the top to hear replies.'); onEnd?.(); return; }
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang === 'hinglish' ? 'hi-IN' : lang;
+  u.lang = pick.lang;
+  if (pick.voice) u.voice = pick.voice;
   u.onend = u.onerror = () => onEnd?.();
   speechSynthesis.speak(u);
 }
+
+// Pick a phone voice for the reply. Devanagari needs a Hindi voice; Hinglish/English text can use an English one.
+function phoneVoice(text, lang) {
+  const voices = speechSynthesis.getVoices();
+  const hindi = voices.find((v) => v.lang?.toLowerCase().startsWith('hi'));
+  const english = voices.find((v) => v.lang?.toLowerCase() === 'en-in') || voices.find((v) => v.lang?.toLowerCase().startsWith('en'));
+  const devanagari = /[\u0900-\u097F]/.test(text);
+  if (devanagari) return hindi ? { voice: hindi, lang: 'hi-IN' } : null;
+  if (lang === 'hi-IN' && hindi) return { voice: hindi, lang: 'hi-IN' };
+  return { voice: english || null, lang: 'en-IN' };
+}
+
 
 // ---------- talking khata ----------
 const askStatus = (msg, isError = false) => { $('ask-status').textContent = msg; $('ask-status').classList.toggle('error', isError); };
