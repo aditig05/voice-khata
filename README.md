@@ -2,7 +2,7 @@
 
 **Speak your udhaar and expenses in Hindi, English or any Indian language. Get a running khata.**
 
-**Live demo:** https://voice-khata-ten.vercel.app (press **Load demo data** to try it with sample customers)
+**Live demo:** https://voice-khata-sarvam.vercel.app (press **Load demo data** to try it with sample customers)
 
 Built for the Sarvam AI Buildathon.
 
