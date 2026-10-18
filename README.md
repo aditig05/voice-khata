@@ -15,6 +15,7 @@ A kirana shopkeeper records udhaar (credit) in a paper bahi-khata while serving 
 A **khata** (bahi-khata) is the notebook a shopkeeper keeps to track money: who took goods on credit (**udhaar**), who paid back (**jama**) and what the shop spent (**kharcha**). Voice Khata keeps that book for you.
 
 
+- **Talk to your khata, hands-free:** tap once and have a conversation. Say entries, correct them ("nahi, 250 tha"), say "haan" to save, ask questions, and say "bas" to stop. It listens, works out what you mean, answers out loud and listens again, with about 2 seconds per reply.
 - **Speak an entry**, e.g. *"Ramesh ne do sau ka udhaar liya, atta aur chini"*. It becomes a structured entry (name, amount, udhaar / jama / kharcha, note), and you check it before saving.
 - **See the khata**: who owes what, today's collections and shop expenses.
 - **Ask your khata out loud**, e.g. *"Ramesh ka kitna baaki hai?"*, and hear the answer in Hindi.
@@ -41,6 +42,7 @@ A **khata** (bahi-khata) is the notebook a shopkeeper keeps to track money: who 
 |---|---|
 | Saaras v4 | Speech to text in 22 Indian languages + English, biased toward known customer names |
 | Sarvam 105B | Understanding entries, answering questions, reminders, risk insights |
+| Sarvam 105B Conversations | The hands-free voice agent: decides whether you're adding, correcting, confirming or asking, and writes the spoken reply |
 | Bulbul v3 | Speaking answers and reminder voice notes in 11 languages |
 | Document AI | Reading photos of paper ledger pages |
 

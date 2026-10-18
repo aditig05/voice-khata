@@ -12,6 +12,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 *
 const BASE = process.env.SARVAM_BASE_URL || 'https://api.sarvam.ai';
 const CHAT_MODEL = 'sarvam-105b';
 const STT_MODEL = 'saaras:v4';
+const VOICE_MODEL = 'sarvam-105b-conversations'; // Sarvam's model for real-time voice agents
 const TYPES = new Set(['udhaar', 'jama', 'kharcha']);
 
 // Languages Bulbul can speak. Saaras understands more (22 Indian languages + English) and
@@ -38,7 +39,7 @@ app.use(express.static(path.join(__dirname, 'public'))); // local only; Vercel s
 // Every /api call spends Sarvam credits, so cap each visitor. In-memory, per server instance: a
 // speed bump for a public demo, not a hard quota.
 const RATE_WINDOW_MS = 10 * 60 * 1000;
-const RATE_MAX = Number(process.env.RATE_LIMIT_PER_10_MIN) || 40;
+const RATE_MAX = Number(process.env.RATE_LIMIT_PER_10_MIN) || 60;
 const hits = new Map();
 app.use('/api', (req, res, next) => {
   const now = Date.now();
@@ -78,14 +79,18 @@ async function sarvamError(r) {
   return new ApiError(msg, 502);
 }
 
-// sarvam-105b is a reasoning model: hidden thinking counts against max_tokens (often 1-3k),
-// so a small cap leaves `content` null. Keep the budget generous.
-async function chat(messages, { maxTokens = 8000 } = {}) {
+// sarvam-105b thinks before answering by default: 5-15 s, and the hidden thinking counts against
+// max_tokens (a small cap leaves `content` null). Quick extraction/reply tasks turn it off
+// (reasoning: false); only the risk analysis keeps it, with a generous budget.
+async function chat(messages, { maxTokens = 8000, model = CHAT_MODEL, reasoning = true } = {}) {
   const key = requireKey();
   const r = await callSarvam(`${BASE}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'api-subscription-key': key },
-    body: JSON.stringify({ model: CHAT_MODEL, messages, temperature: 0.1, max_tokens: maxTokens }),
+    body: JSON.stringify({
+      model, messages, temperature: 0.1, max_tokens: maxTokens,
+      ...(reasoning ? {} : { reasoning_effort: null }), // null turns thinking off: ~0.5 s instead of 5-15 s
+    }),
   });
   if (!r.ok) throw await sarvamError(r);
   const data = await r.json();
@@ -123,29 +128,28 @@ function normalizeEntries(raw) {
 }
 
 // 1) Speech -> text (Sarvam Saaras)
+async function transcribeAudio(file, names) {
+  const key = requireKey();
+  const mime = (file.mimetype || 'audio/webm').split(';')[0];
+  const form = new FormData();
+  form.append('file', new Blob([file.buffer], { type: mime }), file.originalname || 'speech.webm');
+  form.append('model', STT_MODEL);
+  form.append('language_code', 'unknown'); // auto-detect any of 22 Indian languages, English, or a mix
+  if (names.length) form.append('keyterms', JSON.stringify(names)); // bias toward known customer names
+
+  const r = await callSarvam(`${BASE}/speech-to-text`, { method: 'POST', headers: { 'api-subscription-key': key }, body: form });
+  if (!r.ok) throw await sarvamError(r);
+  const data = await r.json();
+  const transcript = (data?.transcript || '').trim();
+  if (!transcript) throw new ApiError('Could not hear any speech. Try again closer to the mic.', 422);
+  return { transcript, language_code: data.language_code ?? null };
+}
+
 app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   try {
-    const key = requireKey();
+    requireKey();
     if (!req.file || !req.file.size) throw new ApiError('No audio received. Tap the mic, speak, then tap again.', 400);
-
-    const mime = (req.file.mimetype || 'audio/webm').split(';')[0];
-    const form = new FormData();
-    form.append('file', new Blob([req.file.buffer], { type: mime }), req.file.originalname || 'speech.webm');
-    form.append('model', STT_MODEL);
-    form.append('language_code', 'unknown'); // auto-detect Hindi / English / mixed
-    const names = cleanNames(req.body?.names);
-    if (names.length) form.append('keyterms', JSON.stringify(names)); // bias toward known customer names
-
-    const r = await callSarvam(`${BASE}/speech-to-text`, {
-      method: 'POST',
-      headers: { 'api-subscription-key': key },
-      body: form,
-    });
-    if (!r.ok) throw await sarvamError(r);
-    const data = await r.json();
-    const transcript = (data?.transcript || '').trim();
-    if (!transcript) throw new ApiError('Could not hear any speech. Try again closer to the mic.', 422);
-    res.json({ transcript, language_code: data.language_code ?? null });
+    res.json(await transcribeAudio(req.file, cleanNames(req.body?.names)));
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Transcription failed.' });
   }
@@ -177,7 +181,7 @@ app.post('/api/parse', async (req, res) => {
     const answer = await chat([
       { role: 'system', content: PARSE_SYSTEM },
       { role: 'user', content: `Known customers: ${known.length ? known.join(', ') : '(none yet)'}\n\nShopkeeper said: """${text}"""` },
-    ]);
+    ], { reasoning: false, maxTokens: 1500 });
 
     let parsed;
     try { parsed = extractJson(answer); }
@@ -213,7 +217,7 @@ app.post('/api/reminder', async (req, res) => {
         role: 'user',
         content: `Write the reminder in ${language}. Customer: ${customer}. Pending amount: Rs ${balance}. ${shop ? `Shop name: ${shop}.` : ''} Thank them for their business and ask them to clear the amount when convenient.`,
       },
-    ], { maxTokens: 6000 });
+    ], { reasoning: false, maxTokens: 800 });
 
     res.json({ message });
   } catch (e) {
@@ -280,13 +284,85 @@ app.post('/api/ask', async (req, res) => {
         content: `You are the khata assistant of a kirana shop, speaking to the shopkeeper. Answer ONLY from the ledger data given. If the data does not contain the answer, say so plainly; never invent numbers. Be brief: 1 to 3 short sentences, easy to listen to. Write amounts as digits with the word for rupees in the reply language (e.g. "2,500 rupees" / "2,500 रुपये"). ${code === 'en-IN' ? 'Reply in simple English.' : `Reply in simple ${name}, written entirely in ${script} script, including customer names, because the answer will be read aloud.`} No markdown, no lists, no emojis.`,
       },
       { role: 'user', content: `${ledgerBrief(req.body?.context)}\n\nQuestion: ${question}` },
-    ], { maxTokens: 6000 });
+    ], { reasoning: false, maxTokens: 800 });
 
     let audio = null;
     try { audio = await speak(answer, code); } catch { /* text answer is still useful */ }
     res.json({ answer, audio });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Could not answer.' });
+  }
+});
+
+// ---------- Talk mode: a hands-free voice agent over the khata ----------
+// One request per turn: audio in -> Saaras transcript -> sarvam-105b-conversations decides what the
+// shopkeeper wants and writes the reply -> Bulbul speaks it. Entries are only saved after a spoken "yes".
+const TALK_ACTIONS = new Set(['add', 'confirm', 'cancel', 'answer', 'stop', 'unclear']);
+
+const talkSystem = (code) => {
+  const { name, script } = LANGUAGES[code];
+  return `You are the hands-free voice assistant for a kirana shop's khata (ledger). The shopkeeper talks to you in any Indian language or English, often mixed; the text comes from speech recognition and may have small mistakes. Decide what they want and reply with ONLY a JSON object:
+{"action":"add|confirm|cancel|answer|stop|unclear","entries":[{"customer":"","type":"udhaar|jama|kharcha","amount":0,"note":""}],"reply":""}
+
+Actions:
+- "add": they told you money entries, or corrected the pending ones ("nahi, 250 tha"). Put the COMPLETE list waiting to be saved in "entries": the pending entries plus the new ones, with corrections applied. In "reply", read the entries back briefly and ask if you should save them.
+- "confirm": there are pending entries and they agree ("haan", "yes", "theek hai", "save karo", "sahi hai"). "reply": a short line saying it is saved.
+- "cancel": they want to drop the pending entries ("nahi rehne do", "cancel", "galat hai, hatao"). "reply": a short acknowledgement.
+- "answer": a question about the khata (a balance, totals, who owes the most, this week's collections). Answer ONLY from the ledger data given; if it is not there, say so. Never invent numbers.
+- "stop": they want to finish ("bas", "band karo", "that's all", "bye"). "reply": a short goodbye.
+- "unclear": anything else, or you did not understand. "reply": ask them to say it again, with a short example.
+
+Entry types: "udhaar" = customer took goods on credit and owes money; "jama" = customer paid money back; "kharcha" = shop expense with customer "".
+Entry rules: customer names in Latin letters, using the exact spelling from the known customers if it matches or sounds alike. amount is a positive number in rupees; convert spoken numbers in any language ("dedh sau" = 150). note is a few words about what it was for, or "".
+For actions other than "add", "entries" must be [].
+
+Reply rules: 1 or 2 short sentences, easy to listen to. Reply in ${code === 'en-IN' ? 'simple English' : `simple ${name}, written entirely in ${script} script, including customer names`}. Write amounts as digits with the word for rupees. No markdown, no emojis.`;
+};
+
+app.post('/api/talk', upload.single('audio'), async (req, res) => {
+  try {
+    requireKey();
+    if (!req.file?.size) throw new ApiError('No audio received.', 400);
+    let state = {};
+    try { state = JSON.parse(req.body?.state || '{}'); } catch { /* use defaults */ }
+    const code = langCode(state.language_code);
+    const pending = normalizeEntries(state.pending);
+    const history = (Array.isArray(state.history) ? state.history : []).slice(-6)
+      .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string')
+      .map((m) => `${m.role === 'user' ? 'Shopkeeper' : 'You'}: ${m.content.slice(0, 300)}`);
+    const known = cleanNames((state.context?.people || []).map((p) => p?.name));
+
+    const { transcript } = await transcribeAudio(req.file, known);
+
+    const answer = await chat([
+      { role: 'system', content: talkSystem(code) },
+      {
+        role: 'user',
+        content: `${ledgerBrief(state.context)}
+Known customers: ${known.join(', ') || '(none yet)'}
+Pending entries (not saved yet): ${pending.length ? JSON.stringify(pending) : '(none)'}
+Recent conversation:
+${history.join('\n') || '(start of conversation)'}
+
+Shopkeeper just said: """${transcript.slice(0, 1000)}"""`,
+      },
+    ], { model: VOICE_MODEL, reasoning: false, maxTokens: 1500 });
+
+    let parsed;
+    try { parsed = extractJson(answer); }
+    catch { parsed = { action: 'answer', entries: [], reply: answer.slice(0, 400) }; } // a plain-text reply is still speakable
+
+    let action = TALK_ACTIONS.has(parsed.action) ? parsed.action : 'unclear';
+    const entries = action === 'add' ? normalizeEntries(parsed.entries) : [];
+    if (action === 'add' && !entries.length) action = 'unclear';
+    if ((action === 'confirm' || action === 'cancel') && !pending.length) action = 'answer';
+    const reply = typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim().slice(0, 600) : 'Ek baar phir boliye.';
+
+    let audio = null;
+    try { audio = await speak(reply, code); } catch { /* the text reply still shows */ }
+    res.json({ transcript, action, entries, reply, audio });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || 'Something went wrong. Please try again.' });
   }
 });
 

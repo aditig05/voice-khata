@@ -267,3 +267,30 @@ dialog::backdrop { background: rgba(20,38,74,.45); }
 @media (max-width: 860px) {
   .say-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- talk mode ---------- */
+.talk { border-left-color: var(--paid); }
+.talk-bar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.talk-btn {
+  font: inherit; font-weight: 800; font-size: 1.1rem; cursor: pointer; color: #fff; background: var(--paid);
+  border: 0; border-radius: 999px; padding: .8rem 1.6rem; box-shadow: 0 4px 0 #13532f;
+}
+.talk-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #13532f; }
+.talk-btn.on { background: var(--owe); box-shadow: 0 4px 0 #6b160f; }
+.talk-state { display: flex; align-items: center; gap: .5rem; font-weight: 700; color: var(--ink-soft); }
+.orb { width: .9rem; height: .9rem; border-radius: 50%; background: var(--rule); }
+.talk-state[data-state="listening"] { color: var(--owe); }
+.talk-state[data-state="listening"] .orb { background: var(--owe); animation: pulse 1s ease-in-out infinite; }
+.talk-state[data-state="thinking"] .orb { background: var(--warn); animation: pulse .6s ease-in-out infinite; }
+.talk-state[data-state="speaking"] { color: var(--paid); }
+.talk-state[data-state="speaking"] .orb { background: var(--paid); animation: pulse .8s ease-in-out infinite; }
+.talk-log {
+  display: flex; flex-direction: column; gap: .4rem; margin-top: .9rem; max-height: 18rem; overflow-y: auto;
+  background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); padding: .6rem;
+}
+.bubble { margin: 0; padding: .4rem .7rem; border-radius: 12px; max-width: 85%; font-size: .98rem; }
+.bubble.user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 3px; }
+.bubble.agent { align-self: flex-start; background: #e7f3ec; color: var(--ink); border-bottom-left-radius: 3px; font-weight: 600; }
+.bubble.note { align-self: center; color: var(--ink-soft); font-size: .85rem; padding: .1rem .4rem; }
+.bubble.error { align-self: center; color: var(--owe); font-weight: 700; font-size: .9rem; }
+@media (prefers-reduced-motion: reduce) { .talk-state .orb { animation: none !important; } }

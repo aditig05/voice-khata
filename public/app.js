@@ -137,7 +137,7 @@ async function api(path, options) {
 }
 
 // ---------- review step ----------
-function renderReview(entries, unclear) {
+function renderReview(entries, unclear, { scroll = true } = {}) {
   pending = entries.map((e) => ({ ...e }));
   const box = $('review-list');
   box.replaceChildren();
@@ -153,7 +153,7 @@ function renderReview(entries, unclear) {
     note.oninput = () => { e.note = note.value; };
     const x = el('button', { className: 'x', type: 'button', textContent: '×', title: 'Remove' });
     x.setAttribute('aria-label', 'Remove this entry');
-    x.onclick = () => { pending.splice(i, 1); renderReview(pending, ''); };
+    x.onclick = () => { pending.splice(i, 1); renderReview(pending, '', { scroll: false }); };
     type.setAttribute('aria-label', 'Entry type');
     name.setAttribute('aria-label', 'Customer name');
     amount.setAttribute('aria-label', 'Amount in rupees');
@@ -169,7 +169,7 @@ function renderReview(entries, unclear) {
   const wasHidden = $('review').hidden;
   $('review').hidden = !show;
   setStep(show ? 2 : 1);
-  if (show && wasHidden) $('review').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (scroll && show && wasHidden) $('review').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function readEntries() {
@@ -197,9 +197,10 @@ document.querySelectorAll('.chip').forEach((c) => {
   c.onclick = () => { $('transcript').value = c.dataset.text; readEntries(); };
 });
 
-$('save').onclick = () => {
+// Saves the reviewed entries. Used by the Save button and by a spoken "haan" in talk mode.
+function commitPending() {
   const bad = pending.find((e) => !(e.amount > 0) || (e.type !== 'kharcha' && !e.customer.trim()));
-  if (bad) { setStatus('Every entry needs an amount and (except expenses) a name.', true); return; }
+  if (bad) { setStatus('Every entry needs an amount and (except expenses) a name.', true); return 0; }
   const now = new Date().toISOString();
   const saved = pending.length;
   for (const e of pending) {
@@ -217,8 +218,11 @@ $('save').onclick = () => {
   render();
   setStep(3);
   toast(`Saved ${saved} ${saved === 1 ? 'entry' : 'entries'} to your khata.`);
-};
-$('discard').onclick = () => { pending = []; $('review').hidden = true; setStatus(''); setStep(1); };
+  return saved;
+}
+function discardPending() { pending = []; $('review').hidden = true; setStatus(''); setStep(1); }
+$('save').onclick = commitPending;
+$('discard').onclick = discardPending;
 
 // reuse existing spelling so "ramesh" and "Ramesh" stay one customer
 function canonicalName(name) {
@@ -516,6 +520,140 @@ $('remind-copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('remind-text').value); $('remind-status').textContent = 'Copied.'; }
   catch { $('remind-status').textContent = 'Could not copy. Select the text and copy it manually.'; }
 };
+
+// ---------- talk mode: hands-free voice agent ----------
+// Loop: listen (stops by itself after a pause) -> /api/talk (transcribe + decide + reply + voice)
+// -> act on it -> play the reply -> listen again. Entries go to the review card and are saved only
+// when the shopkeeper says yes (or presses Save).
+const talk = { on: false, stream: null, ctx: null, analyser: null, recorder: null, audio: null, history: [], quietTurns: 0, timer: null };
+const TALK_LABEL = { idle: 'Off', listening: 'Listening… boliye', thinking: 'Thinking…', speaking: 'Speaking…' };
+
+function talkState(state) {
+  $('talk-state').dataset.state = state;
+  $('talk-state-text').textContent = TALK_LABEL[state];
+  $('talk-btn').textContent = talk.on ? 'Stop talking' : 'Start talking';
+  $('talk-btn').classList.toggle('on', talk.on);
+}
+
+function talkBubble(who, text) {
+  const log = $('talk-log');
+  log.hidden = false;
+  log.append(el('p', { className: 'bubble ' + who, textContent: text }));
+  log.scrollTop = log.scrollHeight;
+}
+
+// short rising tone = "your turn to speak"
+function beep() {
+  try {
+    const o = talk.ctx.createOscillator(), g = talk.ctx.createGain(), t = talk.ctx.currentTime;
+    o.frequency.setValueAtTime(660, t); o.frequency.linearRampToValueAtTime(880, t + 0.12);
+    g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(talk.ctx.destination); o.start(t); o.stop(t + 0.2);
+  } catch { /* no sound is fine */ }
+}
+
+async function startTalk() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) { talkBubble('error', 'This browser cannot record audio.'); return; }
+  try { talk.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch { talkBubble('error', 'Microphone blocked. Allow mic access in the browser to talk.'); return; }
+  talk.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  talk.analyser = talk.ctx.createAnalyser();
+  talk.analyser.fftSize = 1024;
+  talk.ctx.createMediaStreamSource(talk.stream).connect(talk.analyser);
+  talk.on = true;
+  talk.quietTurns = 0;
+  talk.history = [];
+  $('talk-log').replaceChildren();
+  listen();
+}
+
+function stopTalk(note) {
+  talk.on = false;
+  clearInterval(talk.timer);
+  if (talk.recorder && talk.recorder.state !== 'inactive') { talk.recorder.onstop = null; talk.recorder.stop(); }
+  talk.audio?.pause();
+  talk.stream?.getTracks().forEach((t) => t.stop());
+  talk.ctx?.close().catch(() => {});
+  talk.stream = talk.ctx = talk.recorder = talk.audio = null;
+  if (note) talkBubble('note', note);
+  talkState('idle');
+}
+
+function listen() {
+  if (!talk.on) return;
+  talkState('listening');
+  beep();
+  const chunks = [];
+  const mimeType = pickMime();
+  const rec = new MediaRecorder(talk.stream, mimeType ? { mimeType } : undefined);
+  talk.recorder = rec;
+  rec.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+
+  // simple voice-activity detection: learn the room's noise level, then stop after ~1.2 s of quiet
+  const buf = new Float32Array(talk.analyser.fftSize);
+  const started = Date.now();
+  let floor = 0, samples = 0, spoke = false, lastLoud = 0, loudMs = 0;
+  rec.onstop = () => {
+    clearInterval(talk.timer);
+    if (!talk.on) return;
+    if (loudMs < 300) { // under ~0.3 s of sound: a click or cough, not speech
+      if (++talk.quietTurns >= 2) { stopTalk('Talk mode stopped: I did not hear anything.'); return; }
+      talkBubble('note', 'I did not hear anything. Speak after the beep, or tap Stop.');
+      listen();
+      return;
+    }
+    talk.quietTurns = 0;
+    sendTurn(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }));
+  };
+  rec.start();
+  talk.timer = setInterval(() => {
+    talk.analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    const rms = Math.sqrt(sum / buf.length);
+    const now = Date.now();
+    if (now - started < 300) { floor += rms; samples++; return; } // calibrate on the first 300 ms
+    const threshold = Math.max(0.015, (floor / Math.max(samples, 1)) * 3);
+    if (rms > threshold) { spoke = true; lastLoud = now; loudMs += 50; }
+    const done = (spoke && now - lastLoud > 1200) || (!spoke && now - started > 7000) || now - started > MAX_SECONDS * 1000;
+    if (done && rec.state === 'recording') rec.stop();
+  }, 50);
+}
+
+async function sendTurn(blob) {
+  talkState('thinking');
+  const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  const form = new FormData();
+  form.append('audio', blob, `speech.${ext}`);
+  form.append('state', JSON.stringify({ language_code: $('lang').value, pending, history: talk.history.slice(-6), context: ledgerContext() }));
+  let data;
+  try { data = await api('/api/talk', { method: 'POST', body: form }); }
+  catch (e) {
+    if (!talk.on) return;
+    talkBubble('error', e.message);
+    if (/too many|quota|api key/i.test(e.message)) { stopTalk(); return; }
+    listen();
+    return;
+  }
+  if (!talk.on) return;
+  talkBubble('user', data.transcript);
+  talk.history.push({ role: 'user', content: data.transcript });
+
+  if (data.action === 'add') renderReview(data.entries, '', { scroll: false }); // keep the conversation in view
+  if (data.action === 'confirm' && !commitPending()) data.reply = $('status').textContent || data.reply;
+  if (data.action === 'cancel') discardPending();
+
+  talkBubble('agent', data.reply);
+  talk.history.push({ role: 'assistant', content: data.reply });
+  const next = () => (data.action === 'stop' ? stopTalk() : listen());
+  if (!data.audio) { next(); return; }
+  talkState('speaking');
+  talk.audio = new Audio('data:audio/mpeg;base64,' + data.audio);
+  talk.audio.onended = () => { if (talk.on) next(); };
+  talk.audio.play().catch(() => { if (talk.on) next(); });
+}
+
+$('talk-btn').onclick = () => (talk.on ? stopTalk() : startTalk());
 
 // ---------- reply language + intro (remembered per browser) ----------
 const LANG_KEY = 'voice-khata.lang';

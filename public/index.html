@@ -68,13 +68,25 @@
           <p class="say-a">→ ₹800 added to shop expenses</p>
         </div>
       </div>
-      <p class="intro-tip"><b>How to speak:</b> say <b>who</b> + <b>how much</b> + <b>what for</b>. You can say several entries in one go: “Ramesh ne 200 ka udhaar liya, Sunita ne 150 wapas diye”. Any Indian language or English works, even mixed. Pick the <b>reply language</b> at the top for spoken answers and reminders.</p>
+      <p class="intro-tip"><b>How to speak:</b> say <b>who</b> + <b>how much</b> + <b>what for</b>. You can say several entries in one go: “Ramesh ne 200 ka udhaar liya, Sunita ne 150 wapas diye”. Any Indian language or English works, even mixed. Pick the <b>reply language</b> at the top for spoken answers and reminders. For a fully hands-free conversation, use <b>Talk to your khata</b>.</p>
     </section>
 
     <div class="col">
+      <section id="talk" class="panel talk" aria-labelledby="talk-h">
+        <h2 id="talk-h">Talk to your khata <span class="pill">hands-free</span></h2>
+        <p class="hint">Tap start and just talk, like you would to a helper. Say entries, fix them (“nahi, 250 tha”), say <b>“haan”</b> to save, or ask a question. Say <b>“bas”</b> when you are done.</p>
+        <div class="talk-bar">
+          <button id="talk-btn" class="talk-btn" type="button">Start talking</button>
+          <div id="talk-state" class="talk-state" data-state="idle" aria-live="polite">
+            <span class="orb" aria-hidden="true"></span><span id="talk-state-text">Off</span>
+          </div>
+        </div>
+        <div id="talk-log" class="talk-log" hidden></div>
+      </section>
+
       <section class="panel record" aria-labelledby="rec-h">
-        <h2 id="rec-h"><span class="num-badge">1</span> Add entries</h2>
-        <p class="hint">Nothing is saved until you check it.</p>
+        <h2 id="rec-h"><span class="num-badge">1</span> Add entries one at a time</h2>
+        <p class="hint">Tap, speak, tap again. Nothing is saved until you check it.</p>
 
         <div class="mic-stage">
           <button id="mic" class="mic big" type="button" aria-pressed="false" aria-describedby="mic-help">
