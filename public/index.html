@@ -16,7 +16,25 @@
     <div class="cover-inner">
       <div>
         <h1>खाता <span>Voice Khata</span></h1>
-        <p>Say it the way you would tell a helper. Hindi, English or both.</p>
+        <p>Your shop’s udhaar book, kept by voice. Speak in Hindi, English or any Indian language.</p>
+      </div>
+      <div class="cover-tools">
+        <label class="lang-pick">Reply language
+          <select id="lang">
+          <option value="hi-IN">हिन्दी · Hindi</option>
+          <option value="en-IN">English</option>
+          <option value="bn-IN">বাংলা · Bengali</option>
+          <option value="mr-IN">मराठी · Marathi</option>
+          <option value="ta-IN">தமிழ் · Tamil</option>
+          <option value="te-IN">తెలుగు · Telugu</option>
+          <option value="kn-IN">ಕನ್ನಡ · Kannada</option>
+          <option value="ml-IN">മലയാളം · Malayalam</option>
+          <option value="gu-IN">ગુજરાતી · Gujarati</option>
+          <option value="pa-IN">ਪੰਜਾਬੀ · Punjabi</option>
+          <option value="od-IN">ଓଡ଼ିଆ · Odia</option>
+          </select>
+        </label>
+        <button id="intro-open" type="button" class="btn ghost" hidden>How to use</button>
       </div>
       <ol class="steps" aria-label="How it works">
         <li data-step="1" class="active"><b>1</b> Bolo <small>Speak, type or scan</small></li>
@@ -27,6 +45,32 @@
   </header>
 
   <main class="page">
+    <section id="intro" class="panel intro" aria-labelledby="intro-h">
+      <div class="intro-head">
+        <h2 id="intro-h">What is Voice Khata?</h2>
+        <button id="intro-close" type="button" class="btn quiet">Got it, hide this</button>
+      </div>
+      <p class="intro-lead">A <b>khata</b> (bahi-khata) is the notebook a shopkeeper keeps to track money: who took goods on credit, who paid back, and what the shop spent. Voice Khata keeps that book for you. <b>Just speak</b>, check what it understood, and save. Balances, reminders and totals update by themselves.</p>
+      <div class="say-grid">
+        <div class="say udhaar">
+          <h3>Udhaar <small>you gave goods on credit</small></h3>
+          <p class="say-q">“Ramesh ne 200 ka saman udhaar liya”</p>
+          <p class="say-a">→ Ramesh now owes you ₹200</p>
+        </div>
+        <div class="say jama">
+          <h3>Jama <small>a customer paid you back</small></h3>
+          <p class="say-q">“Sunita ne 150 wapas diye”</p>
+          <p class="say-a">→ Sunita owes ₹150 less</p>
+        </div>
+        <div class="say kharcha">
+          <h3>Kharcha <small>the shop spent money</small></h3>
+          <p class="say-q">“Bijli bill 800 diya”</p>
+          <p class="say-a">→ ₹800 added to shop expenses</p>
+        </div>
+      </div>
+      <p class="intro-tip"><b>How to speak:</b> say <b>who</b> + <b>how much</b> + <b>what for</b>. You can say several entries in one go: “Ramesh ne 200 ka udhaar liya, Sunita ne 150 wapas diye”. Any Indian language or English works, even mixed. Pick the <b>reply language</b> at the top for spoken answers and reminders.</p>
+    </section>
+
     <div class="col">
       <section class="panel record" aria-labelledby="rec-h">
         <h2 id="rec-h"><span class="num-badge">1</span> Add entries</h2>
@@ -81,7 +125,7 @@
 
       <section class="panel ask" aria-labelledby="ask-h">
         <h2 id="ask-h">Ask your khata <span class="pill">answers out loud</span></h2>
-        <p class="hint">Try “Ramesh ka kitna baaki hai?” or “is hafte kitna aaya?”</p>
+        <p class="hint">Try “Ramesh ka kitna baaki hai?” or “is hafte kitna aaya?”. Answers come in your reply language.</p>
         <div class="mic-row">
           <button id="ask-mic" class="mic alt" type="button" aria-pressed="false">
             <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
@@ -161,9 +205,18 @@
       <h3 id="remind-title">Payment reminder</h3>
       <label for="remind-lang" class="field-label">Language</label>
       <select id="remind-lang">
-        <option value="hindi">Hindi</option>
-        <option value="hinglish">Hinglish</option>
-        <option value="english">English</option>
+        <option value="hinglish">Hinglish (Hindi in English letters)</option>
+        <option value="hi-IN">हिन्दी · Hindi</option>
+        <option value="en-IN">English</option>
+        <option value="bn-IN">বাংলা · Bengali</option>
+        <option value="mr-IN">मराठी · Marathi</option>
+        <option value="ta-IN">தமிழ் · Tamil</option>
+        <option value="te-IN">తెలుగు · Telugu</option>
+        <option value="kn-IN">ಕನ್ನಡ · Kannada</option>
+        <option value="ml-IN">മലയാളം · Malayalam</option>
+        <option value="gu-IN">ગુજરાતી · Gujarati</option>
+        <option value="pa-IN">ਪੰਜਾਬੀ · Punjabi</option>
+        <option value="od-IN">ଓଡ଼ିଆ · Odia</option>
       </select>
       <textarea id="remind-text" rows="5" placeholder="Writing the message…"></textarea>
       <p id="remind-status" class="status" role="status" aria-live="polite"></p>

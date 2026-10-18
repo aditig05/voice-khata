@@ -351,15 +351,13 @@ function ledgerContext() {
   };
 }
 
-const guessLang = (q) => (/^[\x00-\x7f]+$/.test(q) && /\b(how|what|who|much|owe|owes|total|this|today|week|expense|expenses|received|pending)\b/i.test(q) ? 'en-IN' : 'hi-IN');
-
-async function askKhata(question, languageCode) {
+async function askKhata(question) {
   askStatus('Looking through your khata…');
   busy($('ask-go'), true);
   try {
     const data = await api('/api/ask', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, language_code: languageCode === 'en-IN' ? 'en-IN' : 'hi-IN', context: ledgerContext() }),
+      body: JSON.stringify({ question, language_code: $('lang').value, context: ledgerContext() }),
     });
     $('answer').textContent = data.answer;
     $('answer-box').hidden = false;
@@ -381,7 +379,7 @@ $('ask-form').onsubmit = (ev) => {
   ev.preventDefault();
   const q = $('question').value.trim();
   if (!q) { askStatus('Type or speak a question first.', true); return; }
-  askKhata(q, guessLang(q));
+  askKhata(q);
 };
 
 makeRecorder({
@@ -390,7 +388,7 @@ makeRecorder({
     askStatus('Turning your voice into text…');
     const data = await transcribe(blob, name);
     $('question').value = data.transcript;
-    await askKhata(data.transcript, data.language_code);
+    await askKhata(data.transcript);
   },
 });
 
@@ -482,6 +480,7 @@ async function genReminder() {
 function openReminder(name, balance) {
   remindFor = { name, balance };
   $('remind-title').textContent = `Reminder for ${name} (${rupee(balance)})`;
+  $('remind-lang').value = $('lang').value;
   $('remind-text').value = '';
   $('voice-box').hidden = true;
   $('remind-audio').removeAttribute('src');
@@ -496,7 +495,7 @@ $('remind-voice').onclick = async () => {
   st.textContent = 'Recording the voice note…';
   busy($('remind-voice'), true);
   try {
-    const data = await api('/api/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, language_code: $('remind-lang').value === 'english' ? 'en-IN' : 'hi-IN' }) });
+    const data = await api('/api/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, language_code: $('remind-lang').value === 'hinglish' ? 'hi-IN' : $('remind-lang').value }) });
     const src = 'data:audio/mpeg;base64,' + data.audio;
     $('remind-audio').src = src;
     $('remind-dl').href = src;
@@ -517,6 +516,25 @@ $('remind-copy').onclick = async () => {
   try { await navigator.clipboard.writeText($('remind-text').value); $('remind-status').textContent = 'Copied.'; }
   catch { $('remind-status').textContent = 'Could not copy. Select the text and copy it manually.'; }
 };
+
+// ---------- reply language + intro (remembered per browser) ----------
+const LANG_KEY = 'voice-khata.lang';
+const INTRO_KEY = 'voice-khata.intro-hidden';
+const remember = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
+const recall = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+const savedLang = recall(LANG_KEY);
+if (savedLang && [...$('lang').options].some((o) => o.value === savedLang)) $('lang').value = savedLang;
+$('lang').onchange = () => remember(LANG_KEY, $('lang').value);
+
+function showIntro(show) {
+  $('intro').hidden = !show;
+  $('intro-open').hidden = show;
+  remember(INTRO_KEY, show ? '' : '1');
+}
+showIntro(!recall(INTRO_KEY));
+$('intro-close').onclick = () => showIntro(false);
+$('intro-open').onclick = () => { showIntro(true); $('intro').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
 // ---------- misc ----------
 $('unfilter').onclick = () => { filterName = null; render(); };

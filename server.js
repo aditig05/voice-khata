@@ -14,6 +14,23 @@ const CHAT_MODEL = 'sarvam-105b';
 const STT_MODEL = 'saaras:v4';
 const TYPES = new Set(['udhaar', 'jama', 'kharcha']);
 
+// Languages Bulbul can speak. Saaras understands more (22 Indian languages + English) and
+// auto-detects them, so any of those works for input; this list is for spoken/written replies.
+const LANGUAGES = {
+  'hi-IN': { name: 'Hindi', script: 'Devanagari' },
+  'en-IN': { name: 'English', script: 'Latin' },
+  'bn-IN': { name: 'Bengali', script: 'Bengali' },
+  'ta-IN': { name: 'Tamil', script: 'Tamil' },
+  'te-IN': { name: 'Telugu', script: 'Telugu' },
+  'kn-IN': { name: 'Kannada', script: 'Kannada' },
+  'ml-IN': { name: 'Malayalam', script: 'Malayalam' },
+  'mr-IN': { name: 'Marathi', script: 'Devanagari' },
+  'gu-IN': { name: 'Gujarati', script: 'Gujarati' },
+  'pa-IN': { name: 'Punjabi', script: 'Gurmukhi' },
+  'od-IN': { name: 'Odia', script: 'Odia' },
+};
+const langCode = (l) => (LANGUAGES[l] ? l : 'hi-IN');
+
 app.set('trust proxy', true); // behind Vercel / Render proxies, so req.ip is the visitor's address
 app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, 'public'))); // local only; Vercel serves public/ from its CDN
@@ -134,7 +151,7 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
   }
 });
 
-const PARSE_SYSTEM = `You are the bookkeeping assistant of an Indian kirana (neighbourhood) shop. The shopkeeper speaks Hindi, English or a mix, and the text may contain speech-recognition mistakes. Extract every money entry.
+const PARSE_SYSTEM = `You are the bookkeeping assistant of an Indian kirana (neighbourhood) shop. The shopkeeper may speak any Indian language (Hindi, Tamil, Bengali, Marathi, Telugu, ...), English, or a mix, and the text may contain speech-recognition mistakes. Extract every money entry.
 
 Entry types:
 - "udhaar": a customer took goods on credit and still owes the shop (e.g. "Ramesh ne 200 ka udhaar liya", "Ramesh ko 200 ka saman diya udhaar").
@@ -143,7 +160,7 @@ Entry types:
 
 Rules:
 - Write customer names in Latin letters (English spelling), e.g. "Ramesh", "Sunita Devi". If a name matches or sounds like one in the known customer list, use exactly that spelling.
-- amount is a positive number in rupees. Convert spoken numbers ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250).
+- amount is a positive number in rupees. Convert spoken numbers in any language ("do sau" = 200, "dedh sau" = 150, "dhai sau" = 250, "இருநூறு" = 200).
 - note is a few words about what it was for (e.g. "atta, chini"); use "" if none. Keep the note in the language it was spoken in.
 - For "kharcha", customer must be "".
 - If the text has no money entry, or something is too unclear to record, return an empty entries list and explain briefly in "unclear".
@@ -174,7 +191,9 @@ app.post('/api/parse', async (req, res) => {
   }
 });
 
-const LANGS = { hindi: 'Hindi (Devanagari script)', hinglish: 'Hinglish (Hindi in Roman letters)', english: 'English' };
+const reminderLanguage = (l) => (l === 'hinglish' ? 'Hinglish (Hindi in Roman letters)'
+  : l === 'en-IN' ? 'English'
+  : LANGUAGES[l] ? `${LANGUAGES[l].name}, written entirely in ${LANGUAGES[l].script} script (not Roman letters)` : 'Hindi, written entirely in Devanagari script (not Roman letters)');
 
 // 3) Draft a polite payment reminder (Sarvam 105B)
 app.post('/api/reminder', async (req, res) => {
@@ -182,7 +201,7 @@ app.post('/api/reminder', async (req, res) => {
     const customer = typeof req.body?.customer === 'string' ? req.body.customer.trim().slice(0, 64) : '';
     const balance = Number(req.body?.balance);
     const shop = typeof req.body?.shop === 'string' ? req.body.shop.trim().slice(0, 64) : '';
-    const language = LANGS[req.body?.language] || LANGS.hindi;
+    const language = reminderLanguage(req.body?.language);
     if (!customer || !Number.isFinite(balance) || balance <= 0) throw new ApiError('A customer with a pending balance is required.', 400);
 
     const message = await chat([
@@ -223,13 +242,12 @@ async function speak(text, languageCode = 'hi-IN') {
   return audio; // base64 mp3
 }
 
-const ttsLang = (l) => (l === 'en-IN' ? 'en-IN' : 'hi-IN');
 
 app.post('/api/speak', async (req, res) => {
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!text) throw new ApiError('Nothing to speak.', 400);
-    res.json({ audio: await speak(text, ttsLang(req.body?.language_code)) });
+    res.json({ audio: await speak(text, langCode(req.body?.language_code)) });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Could not make the audio.' });
   }
@@ -253,18 +271,19 @@ app.post('/api/ask', async (req, res) => {
   try {
     const question = typeof req.body?.question === 'string' ? req.body.question.trim().slice(0, 500) : '';
     if (!question) throw new ApiError('Ask something first.', 400);
-    const english = req.body?.language_code === 'en-IN';
+    const code = langCode(req.body?.language_code);
+    const { name, script } = LANGUAGES[code];
 
     const answer = await chat([
       {
         role: 'system',
-        content: `You are the khata assistant of a kirana shop, speaking to the shopkeeper. Answer ONLY from the ledger data given. If the data does not contain the answer, say so plainly; never invent numbers. Be brief: 1 to 3 short sentences, easy to listen to. Write amounts like ${english ? '"2,500 rupees"' : '"2,500 रुपये"'}. ${english ? 'Reply in simple English.' : 'Reply in simple Hindi, written entirely in Devanagari script, including customer names (e.g. "इमरान"), because the answer will be read aloud.'} No markdown, no lists, no emojis.`,
+        content: `You are the khata assistant of a kirana shop, speaking to the shopkeeper. Answer ONLY from the ledger data given. If the data does not contain the answer, say so plainly; never invent numbers. Be brief: 1 to 3 short sentences, easy to listen to. Write amounts as digits with the word for rupees in the reply language (e.g. "2,500 rupees" / "2,500 रुपये"). ${code === 'en-IN' ? 'Reply in simple English.' : `Reply in simple ${name}, written entirely in ${script} script, including customer names, because the answer will be read aloud.`} No markdown, no lists, no emojis.`,
       },
       { role: 'user', content: `${ledgerBrief(req.body?.context)}\n\nQuestion: ${question}` },
     ], { maxTokens: 6000 });
 
     let audio = null;
-    try { audio = await speak(answer, english ? 'en-IN' : 'hi-IN'); } catch { /* text answer is still useful */ }
+    try { audio = await speak(answer, code); } catch { /* text answer is still useful */ }
     res.json({ answer, audio });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || 'Could not answer.' });
